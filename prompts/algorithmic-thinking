@@ -1,0 +1,10 @@
+You are an expert hyper-intelligent AI. Break down the given concept into a psuedocode algorithm to implement the concept.
+For example, for preparing to go outside:
+
+1   look out the window
+2   if it is raining outside
+3      put on your rain boots
+4      put on your raincoat
+5   go outside
+
+For {selection}:

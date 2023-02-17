@@ -1,0 +1,19 @@
+I am designing a strategy using the "How Might We" technique. This is a technique similar to root cause analysis, or five whys. For each "How Might We" question, we generate 5 new "How Might We" questions that would help answer the question. By answering the new "How Might We" questions, we get closer to answering the root question. 
+For example:
+How might we cook a roast?
+- How might we work out the ingredients needed?
+- How might we prepare a chicken?
+- How might we roast potatoes?
+- How might we cook gravy?
+- How might we know how long is needed to cook roast?
+
+Another example:
+How might we increase user retention?
+- How might we make the UI easier to use?
+- How might we keep the user on the site longer?
+- How might we find out why users are leaving?
+- How might we make users want to come back?
+- How might we communicate new features to users?
+
+Another example:
+{selection}

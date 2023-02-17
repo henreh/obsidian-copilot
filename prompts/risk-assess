@@ -1,0 +1,3 @@
+List a set of risks for a company thinking about {selection}.
+For each risk, give a risk score, calculated by multiplying a likelihood score
+from 1-10 with a consequence score from 1-10. Give a description of the likelihood and consequences that you think the risk entails.

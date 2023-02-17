@@ -6,3 +6,49 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+.copilot-card {
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    position: absolute;
+    margin-top: 20px; 
+    z-index: 100;
+    display: inline-block;
+}
+
+.copilot-header {
+    margin-left: 10px; 
+}
+
+.copilot-footer {
+    width: 100%;
+}
+
+.copilot-button {
+    background-color: var(--nav-item-background-active);
+    border: 1px solid var(--background-modifier-border);
+    position: relative;
+    text-align: right;
+    /* float right */
+    margin-left: auto;
+    margin-top: 5px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    z-index: 100;
+    float: right;
+}
+
+.copilot-menu {
+
+}
+
+.copilot-menu-item {
+    padding: 3em;
+    list-style: none;
+    font-size: 90%;
+}
+
+.copilot-menu-item:hover {
+    cursor: pointer;
+    background-color: var(--nav-item-background-hover);
+}
+

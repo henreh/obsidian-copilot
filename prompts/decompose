@@ -1,0 +1,14 @@
+
+
+Example:
+An employee's weekly pay depends on the rate of pay and the number of hours worked per week. Employees work a minimum of one hour per week, and a maximum of 60. An employee who works more than 40 hours is paid 1.5 times the normal pay rate for all hours worked over 40. Normal pay is £10 per hour. A program is required to calculate and output the weekly pay for any employee.
+
+Decomposition:
+Find out how many hours are worked
+Find out how many of those hours are to be paid at the normal rate
+Find out how many, if any, of those hours are to be paid at the overtime rate
+Work out the pay for the normal hours
+Work out the pay for the overtime hours
+Total the pay for normal and overtime hours
+Output the result
+

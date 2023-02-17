@@ -1,81 +1,185 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { Menu, App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, FuzzySuggestModal, TFile } from 'obsidian';
+import { get_tfiles_from_folder } from "utils";
+const { Configuration, OpenAIApi } = require("openai");
+import { copilotViewPlugin } from 'CopilotView';
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
+interface OCPSettings {
+	prompt_directory: string;
+	openai_api_key: string;
+	temperature: number;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: OCPSettings = {
+	prompt_directory: '.',
+	openai_api_key: '',
+	temperature: 0.3
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+class PromptSuggester extends FuzzySuggestModal<TFile> {
+	private OCP: OCP;
+	public selection: string;
+
+	constructor(plugin: OCP, onChooseItem: (item: TFile) => void) {
+		super(app);
+		this.OCP = plugin;
+		this.setPlaceholder("Type name of a prompt template...");
+		this.onChooseItem = onChooseItem;
+	}
+
+	getItems(): Tfile[] {
+		const files = get_tfiles_from_folder(this.OCP.settings.prompt_directory)
+		if (!files) {
+			return [];
+		}
+		return files;
+	}    
+	
+	getItemText(item: TFile): string {
+        return item.basename;
+    }
+}
+
+export default class OCP extends Plugin {
+	settings: OCPSettings;
+	openai_config: typeof Configuration;
+	openai: typeof OpenAIApi;
+	showingMenu: boolean;
+
+	makeEdit(editor: Editor, newText: string, oldText: string) {
+		const outmarkdown = oldText + "\n" + newText;
+
+		editor.replaceSelection(outmarkdown);
+	}
+
+	checkSelection() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view) {
+			const editor = view.editor;
+			const selection = editor.getSelection();
+			if (selection) {
+				new Notice("Selection");
+				//this.createMenu(editor.getCursor("from"));
+			}
+		}
+	}
+
+	sendPluginReferenceToCopilotView() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view) {
+			const editorView = view.editor.cm;
+			const plugin = editorView.plugin(copilotViewPlugin);
+			plugin.setCopilotPlugin(this);
+		}
+	}
 
 	async onload() {
+
+		this.showingMenu = false; 
+
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		this.registerEditorExtension(copilotViewPlugin);
+		this.sendPluginReferenceToCopilotView();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+		//Almighty fucking hackjob but we need an active editor window to get the plugin reference and the documentation is terrible
+		this.registerInterval(
+			window.setInterval(() => this.sendPluginReferenceToCopilotView(), 1000)
+		);
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
 		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+			id: 'run-simple-prompt',
+			name: 'Run selection as prompt',
+			hotkeys: [{ modifiers: ["Alt"], key: "a" }],
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				const sel = editor.getSelection();
+				console.log("Selected text", sel);
+				const result = await this.runPrompt(sel);
+				console.log("Result", result);
+				
+				this.makeEdit(editor, result, sel);
+			}
+		});
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+		this.addCommand({
+			id: 'run-custom-prompt',
+			name: 'Run custom prompt',
+			hotkeys: [{ modifiers: ["Alt"], key: "d" }],
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				console.log("View", view)
+				let tags = this.getPageTags(view.file); 
+
+				//if tags is null, make it an empty object
+				if (!tags) {
+					tags = {};
 				}
+
+				const prompt_suggester = new PromptSuggester(this, async (result) => {
+					const contents = await this.app.vault.read(result);
+					const promptParameters = this.getPromptParameters(result);
+					const completed_prompt = contents.replace("{selection}", editor.getSelection());
+					console.log("Completed prompt", completed_prompt);
+					console.log("Prompt parameters", promptParameters);
+
+					const completion = await this.runPrompt(completed_prompt, tags, promptParameters);
+
+					console.log("Result", completion);
+
+					this.makeEdit(editor, completion, editor.getSelection());
+				}).open();
 			}
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new OCPSettings(this.app, this));
+	}
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
+	getPageTags(page: TFile) {
+		console.log(page)
+		console.log(this.app.metadataCache.getFileCache(page))
+		const tags = this.app.metadataCache.getFileCache(page)?.frontmatter;
+		return tags;
+	}
+
+	getPromptParameters(promptFile: TFile) {
+		const promptFilematter = this.app.metadataCache.getFileCache(promptFile)?.frontmatter;
+		// For each of the OpenAI API parameters, if the prompt file has a corresponding field, use that value. Otherwise, use the default value.
+		const promptParameters = {
+			temperature: promptFilematter?.temperature || this.settings.temperature,
+			max_tokens: promptFilematter?.max_tokens || 150,
+			n: promptFilematter?.n || 1,
+			presence_penalty: promptFilematter?.presence_penalty || 0,
+			frequency_penalty: promptFilematter?.frequency_penalty || 0,
+			best_of: promptFilematter?.best_of || 1,
+		}
+		return promptParameters;
+	}
+
+	async runPrompt(prompt: string, promptTags: {}, promptParameters: {}) {
+		this.openai_config = new Configuration({
+			apiKey: this.settings.openai_api_key
 		});
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		this.openai = new OpenAIApi(this.openai_config);
+
+		//For each promptTag of the form {key: value}, add a line to the start of the prompt of the form "Using a {key} of {value}.\n"
+		for (const tag of Object.keys(promptTags)) {
+			if (tag != "position") {
+				prompt = `${tag} ${promptTags[tag]}.\n` + prompt;
+			}
+		}
+
+		prompt += "Format your answer using markdown, using bullet lists where necessary and subheadings to delineate different sections."
+
+
+		console.log("Running prompt", prompt);
+		const response = await this.openai.createCompletion({
+			model: 'text-davinci-003',
+			prompt: prompt,
+			...promptParameters
+		});
+		console.log("Response", response)
+		return response.data.choices[0].text;
 	}
 
 	onunload() {
@@ -91,26 +195,11 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+class OCPSettings extends PluginSettingTab {
+	plugin: OCP;
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: OCP) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -120,18 +209,42 @@ class SampleSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+		containerEl.createEl('h2', {text: 'Settings for Obsidian Copilot.'});
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('Prompts directory')
+			.setDesc('Where to find prompt markdown files')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('Enter directory for prompts')
+				.setValue(this.plugin.settings.prompt_directory)
 				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.prompt_directory = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('OpenAI API Key')
+			.setDesc('API key for OpenAI')
+			.addText(text => text
+				.setPlaceholder('Enter API key for OpenAI')
+				.setValue(this.plugin.settings.openai_api_key)
+				.onChange(async (value) => {
+					this.plugin.settings.openai_api_key = value;
+					await this.plugin.saveSettings();
+				}
+			));
+
+		new Setting(containerEl)
+			.setName('Temperature')
+			.setDesc('Temperature for OpenAI')
+			.addText(text => text
+				.setPlaceholder('Enter temperature for OpenAI')
+				.setValue(this.plugin.settings.temperature.toString())
+				.onChange(async (value) => {
+					this.plugin.settings.temperature = parseFloat(value);
+					await this.plugin.saveSettings();
+				}	
+			));
+
 	}
 }
